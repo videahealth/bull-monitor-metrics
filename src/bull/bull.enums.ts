@@ -20,8 +20,9 @@ export enum REDIS_CLIENTS {
 export enum EVENT_TYPES {
   QUEUE_CREATED = 'queue.created',
   QUEUE_REMOVED = 'queue.removed',
-  QUEUE_SERVICE_CLOSED = 'queueService.closed',
-  QUEUE_SERVICE_READY = 'queueService.ready',
+  QUEUE_SERVICE_READY = 'queue.service.ready',
+  QUEUE_SERVICE_CLOSED = 'queue.service.closed',
+  QUEUE_UPDATED = 'queue.updated',
 }
 
 export enum UI_TYPES {

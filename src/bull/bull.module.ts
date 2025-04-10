@@ -1,11 +1,9 @@
 import { ConfigModule } from '@app/config/config.module';
 import { ConfigService } from '@app/config/config.service';
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { RedisModule } from 'nestjs-redis';
-import { BullDashboardMiddleware } from './bull-dashboard.middleware';
 import { BullMetricsService } from './bull-metrics.service';
 import { BullQueuesService } from './bull-queues.service';
-import { BullUiService } from './bull-ui.service';
 import { REDIS_CLIENTS } from './bull.enums';
 import { BullMQMetricsFactory } from './bullmq-metrics.factory';
 
@@ -16,31 +14,22 @@ import { BullMQMetricsFactory } from './bullmq-metrics.factory';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        return [REDIS_CLIENTS.SUBSCRIBE, REDIS_CLIENTS.PUBLISH].map(
-          (client) => {
-            return {
-              name: client,
-              host: configService.config.REDIS_HOST,
-              password: configService.config.REDIS_PASSWORD,
-              port: configService.config.REDIS_PORT,
-              db: configService.config.REDIS_DB,
-              enableReadyCheck: true,
-              reconnectOnError: () => true,
-            };
-          },
-        );
+        return [{
+          name: REDIS_CLIENTS.SUBSCRIBE,
+          host: configService.config.REDIS_HOST,
+          password: configService.config.REDIS_PASSWORD,
+          port: configService.config.REDIS_PORT,
+          db: configService.config.REDIS_DB,
+          enableReadyCheck: true,
+          reconnectOnError: () => true,
+        }];
       },
     }),
   ],
   providers: [
     BullQueuesService,
     BullMetricsService,
-    BullUiService,
     BullMQMetricsFactory,
   ],
 })
-export class BullModule implements NestModule {
-  configure(consumer: MiddlewareConsumer): MiddlewareConsumer | void {
-    consumer.apply(BullDashboardMiddleware).forRoutes('queues');
-  }
-}
+export class BullModule {}

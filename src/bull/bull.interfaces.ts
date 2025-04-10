@@ -7,6 +7,7 @@ export interface BullQueuesServiceEvents {
   [EVENT_TYPES.QUEUE_REMOVED]: (event: QueueRemovedEvent) => void;
   [EVENT_TYPES.QUEUE_SERVICE_READY]: () => void;
   [EVENT_TYPES.QUEUE_SERVICE_CLOSED]: () => void;
+  [EVENT_TYPES.QUEUE_UPDATED]: (event: { queuePrefix: string; queueName: string; queue: Queue; counts: { completed: number; failed: number; delayed: number; active: number; waiting: number } }) => void;
 }
 
 export interface IBullUi {
