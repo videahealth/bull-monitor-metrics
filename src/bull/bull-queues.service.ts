@@ -43,6 +43,10 @@ export class BullQueuesService extends EventEmitter implements OnModuleInit, OnM
   private readonly _redisMutex = withTimeout(new Mutex(), 10000);
   private readonly _bullMutex = withTimeout(new Mutex(), 10000);
   private _metricsInterval: NodeJS.Timeout | null = null;
+  private _lastCounts = new Map<string, any>();
+  private _lastCheckTime = new Map<string, number>();
+  private readonly CACHE_TTL_MS = 30000; // 30 seconds cache TTL
+  private readonly MIN_CHECK_INTERVAL_MS = 30000; // Minimum 30 seconds between checks
 
   constructor(
     @InjectLogger(BullQueuesService)
@@ -427,41 +431,67 @@ export class BullQueuesService extends EventEmitter implements OnModuleInit, OnM
       }
     }
 
-    // Configure metrics collection interval
+    // Configure metrics collection interval with batching and caching
+    const BATCH_SIZE = 5; // Process 5 queues at a time
+    const BATCH_DELAY = 5000; // 5 seconds between batches
+    let currentBatch = 0;
+
     const interval = setInterval(async () => {
-      for (const [queueKey, queue] of Object.entries(this._queues)) {
+      const queueEntries = Object.entries(this._queues);
+      const totalBatches = Math.ceil(queueEntries.length / BATCH_SIZE);
+      
+      if (currentBatch >= totalBatches) {
+        currentBatch = 0;
+      }
+
+      const startIdx = currentBatch * BATCH_SIZE;
+      const endIdx = Math.min(startIdx + BATCH_SIZE, queueEntries.length);
+      const batch = queueEntries.slice(startIdx, endIdx);
+
+      for (const [queueKey, queue] of batch) {
         try {
           const { queuePrefix } = this.splitQueueKey(queueKey);
-          const counts = await queue.getJobCounts('completed', 'failed', 'delayed', 'active', 'waiting');
-          this.logger.debug(`Queue ${queueKey} counts: ${JSON.stringify(counts)}`);
+          const now = Date.now();
+          const lastCheck = this._lastCheckTime.get(queueKey) || 0;
           
-          // First emit queue created to ensure metrics exist
-          this.emit(
-            EVENT_TYPES.QUEUE_CREATED,
-            new QueueCreatedEvent(queuePrefix, queue)
-          );
+          // Skip if we've checked recently
+          if (now - lastCheck < this.MIN_CHECK_INTERVAL_MS) {
+            continue;
+          }
 
-          // Then emit queue updated with the counts
-          this.emit(
-            EVENT_TYPES.QUEUE_UPDATED,
-            {
-              queuePrefix,
-              queueName: queue.name,
-              queue,
-              counts: {
-                completed: counts.completed || 0,
-                failed: counts.failed || 0,
-                delayed: counts.delayed || 0,
-                active: counts.active || 0,
-                waiting: counts.waiting || 0
+          const counts = await queue.getJobCounts('completed', 'failed', 'delayed', 'active', 'waiting');
+          this._lastCheckTime.set(queueKey, now);
+          
+          // Only emit if counts have changed and cache has expired
+          const lastCounts = this._lastCounts.get(queueKey);
+          if (!lastCounts || 
+              JSON.stringify(lastCounts) !== JSON.stringify(counts) || 
+              now - lastCheck >= this.CACHE_TTL_MS) {
+            this._lastCounts.set(queueKey, counts);
+            
+            this.emit(
+              EVENT_TYPES.QUEUE_UPDATED,
+              {
+                queuePrefix,
+                queueName: queue.name,
+                queue,
+                counts: {
+                  completed: counts.completed || 0,
+                  failed: counts.failed || 0,
+                  delayed: counts.delayed || 0,
+                  active: counts.active || 0,
+                  waiting: counts.waiting || 0
+                }
               }
-            }
-          );
+            );
+          }
         } catch (err) {
           this.logger.error(`Error getting job counts for ${queueKey}:`, err);
         }
       }
-    }, this.configService.config.BULL_COLLECT_QUEUE_METRICS_INTERVAL_MS);
+
+      currentBatch++;
+    }, BATCH_DELAY);
 
     // Store interval for cleanup
     this._metricsInterval = interval;
