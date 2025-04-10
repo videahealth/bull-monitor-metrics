@@ -1,17 +1,17 @@
 import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { BullModule } from './bull/bull.module';
+// import { BullModule } from './bull/bull.module';
 import { ConfigModule } from './config/config.module';
 import { ConfigService } from './config/config.service';
 import { HealthModule } from './health/health.module';
 import { LoggerModule } from './logger';
 import { LOG_LEVELS } from './logger/common';
 import { MetricsModule } from './metrics';
-import { VersionModule } from './version/version.module';
+// import { VersionModule } from './version/version.module';
 
 @Module({
   imports: [
-    BullModule,
+    // BullModule,
     EventEmitterModule.forRoot(),
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
@@ -38,7 +38,7 @@ import { VersionModule } from './version/version.module';
         };
       },
     }),
-    VersionModule,
+    // VersionModule,
   ],
 })
 export class AppModule {}
