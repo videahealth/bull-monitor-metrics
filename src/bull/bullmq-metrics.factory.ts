@@ -165,6 +165,19 @@ export class BullMQMetricsFactory {
     });
   }
 
+  updateMetrics(queuePrefix: string, queueName: string, counts: { completed: number; failed: number; delayed: number; active: number; waiting: number }) {
+    const labels = {
+      [LABEL_NAMES.QUEUE_PREFIX]: queuePrefix,
+      [LABEL_NAMES.QUEUE_NAME]: queueName,
+    };
+
+    this.jobs_completed_total.set(labels, counts.completed);
+    this.jobs_failed_total.set(labels, counts.failed);
+    this.jobs_delayed_total.set(labels, counts.delayed);
+    this.jobs_active_total.set(labels, counts.active);
+    this.jobs_waiting_total.set(labels, counts.waiting);
+  }
+
   recordJobMetrics(
     labels: Record<string, string>,
     status: STATUS_TYPES,

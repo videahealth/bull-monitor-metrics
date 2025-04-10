@@ -1,36 +1,41 @@
 import { InjectLogger, LoggerService } from '@app/logger';
-import { Injectable } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
-import { EVENT_TYPES } from './bull.enums';
-import { QueueCreatedEvent, QueueRemovedEvent } from './bull.interfaces';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import { BullMQMetricsFactory } from './bullmq-metrics.factory';
+import { EVENT_TYPES } from './bull.enums';
+import { QueueCreatedEvent } from './bull.interfaces';
+import { BullQueuesService } from './bull-queues.service';
 
 @Injectable()
-export class BullMetricsService {
-  private readonly _queues: {
-    [queueName: string]: ReturnType<BullMQMetricsFactory['create']>;
-  } = {};
+export class BullMetricsService implements OnModuleInit, OnModuleDestroy {
+  private readonly _queues: Record<string, Queue> = {};
 
   constructor(
+    private readonly bullQueuesService: BullQueuesService,
+    private readonly bullMQMetricsFactory: BullMQMetricsFactory,
     @InjectLogger(BullMetricsService)
     private readonly logger: LoggerService,
-    private readonly metricsFactory: BullMQMetricsFactory,
   ) {}
 
-  @OnEvent(EVENT_TYPES.QUEUE_CREATED)
-  private addQueueMetrics(event: QueueCreatedEvent) {
-    this.logger.log(`Adding queue metrics for ${event.uniqueName}`);
-    this._queues[event.uniqueName] = this.metricsFactory.create(
-      event.queuePrefix,
-      event.queueName,
-      event.queue,
-    );
+  onModuleInit() {
+    this.bullQueuesService.on(EVENT_TYPES.QUEUE_CREATED, (event: QueueCreatedEvent) => {
+      this.logger.debug(`Adding queue metrics: ${event.queueName}`);
+      this._queues[event.queueName] = event.queue;
+      this.bullMQMetricsFactory.create(event.queuePrefix, event.queueName, event.queue);
+    });
+
+    this.bullQueuesService.on(EVENT_TYPES.QUEUE_REMOVED, (queueName: string) => {
+      this.logger.debug(`Removing queue metrics: ${queueName}`);
+      delete this._queues[queueName];
+    });
+
+    this.bullQueuesService.on(EVENT_TYPES.QUEUE_UPDATED, (event: { queuePrefix: string; queueName: string; counts: { completed: number; failed: number; delayed: number; active: number; waiting: number } }) => {
+      this.logger.debug(`Updating queue metrics: ${event.queueName} - ${JSON.stringify(event.counts)}`);
+      this.bullMQMetricsFactory.updateMetrics(event.queuePrefix, event.queueName, event.counts);
+    });
   }
 
-  @OnEvent(EVENT_TYPES.QUEUE_REMOVED)
-  private async removeQueueMetrics(event: QueueRemovedEvent) {
-    this.logger.log(`Removing queue metrics for ${event.uniqueName}`);
-    await this._queues[event.uniqueName].remove();
-    delete this._queues[event.uniqueName];
+  onModuleDestroy() {
+    this.bullQueuesService.removeAllListeners();
   }
 }
